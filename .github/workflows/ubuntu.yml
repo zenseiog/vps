@@ -1,0 +1,67 @@
+name: CI Ubuntu 24/7
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+  repository_dispatch:
+    types: [ restart_ubuntu ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 1. Pichli baar ka data backup agar saved hai, toh use restore karega
+      - name: Restore VPS Data Backup
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ./my-vps-data
+          key: vps-data-backup-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            vps-data-backup-
+
+      # 2. Tmate installation aur static connection run
+      - name: Run Tmate Terminal
+        run: |
+          sudo apt-get update && sudo apt-get install -y tmate
+          
+          # Is folder ke andar hi apna saara data save rakhna
+          mkdir -p ./my-vps-data
+          
+          echo "Starting Tmate Session..."
+          tmate -S /tmp/tmate.sock new-session -d
+          tmate -S /tmp/tmate.sock wait tmate
+          
+          echo "=========================================================="
+          echo "👉 AAPKA LIVE TERMINAL WEB LINK NEECHE HAI:"
+          tmate -S /tmp/tmate.sock display -p '#{tmate_web}'
+          echo "=========================================================="
+          
+          # 350 minutes (5.8 hours) tak active rahega bina break huye
+          sleep 350m || true
+          echo "Session complete, updating backup and restarting..."
+
+      # 3. Server close hone se pehle data save karega
+      - name: Save Updated VPS Data Backup
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ./my-vps-data
+          key: vps-data-backup-${{ github.run_id }}-${{ github.run_attempt }}
+
+      # 4. Corrected API Endpoint jo loop tutne nahi dega
+      - name: Auto Loop Trigger
+        if: always()
+        run: |
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://github.com{{ github.repository }}/dispatches \
+            -d '{"event_type": "restart_ubuntu"}'
