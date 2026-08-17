@@ -1,0 +1,82 @@
+name: CI Ubuntu 24/7
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+  repository_dispatch:
+    types: [ restart_ubuntu ]
+
+# Isse permissions ka error 100% khatam ho jayega
+permissions: write-all
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 1. Purana data backup load karna
+      - name: Restore VPS Data Backup
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ./my-vps-data
+          key: vps-data-backup-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            vps-data-backup-
+
+      # 2. Ngrok, SSH aur Password setup karne ka step
+      - name: Start Secure Fixed SSH Server
+        env:
+          NGROK_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+        run: |
+          mkdir -p ./my-vps-data
+          
+          # OpenSSH aur Ngrok setup
+          sudo apt-get update && sudo apt-get install -y openssh-server snapd
+          sudo snap install ngrok
+          
+          # Ngrok ko authenticate karna
+          ngrok config add-authtoken "$NGROK_TOKEN"
+          
+          # Runner user ka password fix karna (Aap is 'VpsPass123!' ko badal sakte hain)
+          echo "runner:VpsPass123!" | sudo chpasswd
+          sudo service ssh start
+          
+          # Background me Ngrok tunnel chalana port 22 (SSH) ke liye
+          ngrok tcp 22 --log=stdout > ngrok.log &
+          sleep 10
+          
+          echo "=========================================================="
+          echo "👉 APNE PC/MOBILE SE CONNECT KARNE KE LIYE YEH COMMAND CHALAYEIN:"
+          echo "Ngrok Dashboard par ja kar Endpoint Check karein (e.g., tcp://0.tcp.ngrok.io:12345)"
+          echo "Command: ssh runner@0.tcp.ngrok.io -p 12345"
+          echo "Password: VpsPass123!"
+          echo "=========================================================="
+          
+          # Main process timeout
+          timeout 350m sleep 350m || true
+          echo "Time limit reached. Saving backup and restarting..."
+
+      # 3. Data automatic save hona
+      - name: Save Updated VPS Data Backup
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ./my-vps-data
+          key: vps-data-backup-${{ github.run_id }}-${{ github.run_attempt }}
+
+      # 4. Loop bina ruke restart hona
+      - name: Auto Loop Trigger
+        if: always()
+        run: |
+          curl -X POST \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://github.com{{ github.repository }}/dispatches \
+            -d '{"event_type": "restart_ubuntu"}'
