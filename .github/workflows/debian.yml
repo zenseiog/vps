@@ -1,0 +1,37 @@
+name: CI Debian 24/7
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+  repository_dispatch:
+    types: [ restart_debian ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run SSHX inside Debian Container
+        run: |
+          echo "Starting sshx inside Debian docker environment..."
+          # Max 350 minutes ka loop lagaya hai
+          timeout 350m docker run --rm debian:13-slim sh -c "
+            apt-get update && apt-get install -y curl &&
+            curl -sSf https://sshx.io/get | sh -s run
+          " || true
+          echo "Session timed out safely, preparing to restart..."
+
+      # Triggering the loop for Debian workflow
+      - name: Auto Loop Trigger
+        if: always()
+        run: |
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://github.com{{ github.repository }}/dispatches \
+            -d '{"event_type": "restart_debian"}'
