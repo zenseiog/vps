@@ -1,0 +1,59 @@
+name: CI Ubuntu 24/7
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+  repository_dispatch:
+    types: [ restart_ubuntu ]
+
+# Isse GitHub API loop ko block nahi karegi
+permissions: write-all
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 1. Pichli baar ka data backup load karna
+      - name: Restore Data Backup
+        uses: actions/cache/restore@v4
+        with:
+          path: ./my-vps-data
+          key: vps-data-backup-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: vps-data-backup-
+
+      - name: Run a one-line script
+        run: echo Hello, world!
+
+      # 2. SSHX execution with strict safe timeout
+      - name: Run a multi-line script
+        run: |
+          mkdir -p ./my-vps-data
+          echo "💡 TIP: Apni zaroori files hamesha './my-vps-data' folder ke andar hi rkhna!"
+          
+          # 350 minutes ka loop taaki data safely back up ho sake
+          timeout 350m sh -c 'curl -sSf https://sshx.io/get | sh -s run' || true
+          echo "test, and deploy your project."
+
+      # 3. Data auto save karna clone close hone se pehle
+      - name: Save Updated Data Backup
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ./my-vps-data
+          key: vps-data-backup-${{ github.run_id }}-${{ github.run_attempt }}
+
+      # 4. Perfect automatic loop trigger
+      - name: Auto Loop Trigger
+        if: always()
+        run: |
+          curl -X POST \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://github.com{{ github.repository }}/dispatches \
+            -d '{"event_type": "restart_ubuntu"}'
