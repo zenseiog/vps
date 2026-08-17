@@ -1,0 +1,58 @@
+name: CI Ubuntu 24/7
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+  repository_dispatch:
+    types: [ restart_ubuntu ]
+
+permissions: write-all
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 1. Purana data load karna
+      - name: Restore VPS Data Backup
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ./my-vps-data
+          key: vps-data-backup-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            vps-data-backup-
+
+      # 2. Live Terminal (Yahan bina kisi token ke link banega)
+      - name: Run SSHX with Timeout
+        run: |
+          mkdir -p ./my-vps-data
+          echo "💡 TIP: Apni files ko hamesha './my-vps-data/' folder ke andar hi rkhna!"
+          
+          # 350 minutes ka timeout taaki 6 ghante se pehle safely save ho sake
+          timeout 350m sh -c 'curl -sSf https://sshx.io | sh -s run' || true
+          echo "Session timed out safely, saving backup..."
+
+      # 3. Data automatic save hona
+      - name: Save Updated VPS Data Backup
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ./my-vps-data
+          key: vps-data-backup-${{ github.run_id }}-${{ github.run_attempt }}
+
+      # 4. Corrected API Endpoint (Loop crash nahi hoga)
+      - name: Auto Loop Trigger
+        if: always()
+        run: |
+          curl -X POST \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://github.com{{ github.repository }}/dispatches \
+            -d '{"event_type": "restart_ubuntu"}'
