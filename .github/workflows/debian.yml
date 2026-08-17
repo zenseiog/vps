@@ -1,0 +1,62 @@
+name: CI Debian 24/7
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+  repository_dispatch:
+    types: [ restart_debian ]
+
+permissions: write-all
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 1. Debian backup restore karna
+      - name: Restore Debian Data Backup
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ./debian-vps-data
+          key: debian-data-backup-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            debian-data-backup-
+
+      # 2. Docker Container ke andar sshx chalana
+      - name: Run SSHX inside Debian Container
+        run: |
+          mkdir -p ./debian-vps-data
+          
+          timeout 350m docker run --rm \
+            -v ${{ github.workspace }}/debian-vps-data:/workspace \
+            debian:13-slim sh -c "
+              apt-get update && apt-get install -y curl &&
+              echo '💡 TIP: Container me saara data /workspace folder me hi save karna!' &&
+              curl -sSf https://sshx.io | sh -s run
+            " || true
+          echo "Session timed out safely, saving backup..."
+
+      # 3. Debian data backup save karna
+      - name: Save Updated Debian Data Backup
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ./debian-vps-data
+          key: debian-data-backup-${{ github.run_id }}-${{ github.run_attempt }}
+
+      # 4. Debian auto loop trigger
+      - name: Auto Loop Trigger
+        if: always()
+        run: |
+          curl -X POST \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://github.com{{ github.repository }}/dispatches \
+            -d '{"event_type": "restart_debian"}'
