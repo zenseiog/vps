@@ -1,4 +1,4 @@
-name: CI Ubuntu 24/7 (Password Protected)
+name: CI Ubuntu 24/7
 
 on:
   push:
@@ -9,6 +9,7 @@ on:
   repository_dispatch:
     types: [ restart_ubuntu ]
 
+# Isse GitHub API loop ko block nahi karegi
 permissions: write-all
 
 jobs:
@@ -18,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 1. Purana data backup load karna
+      # 1. Pichli baar ka data backup load karna
       - name: Restore Data Backup
         uses: actions/cache/restore@v4
         with:
@@ -26,39 +27,20 @@ jobs:
           key: vps-data-backup-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: vps-data-backup-
 
-      # 2. Safety configurations aur password logic setup
-      - name: Setup Password Protection
+      - name: Run a one-line script
+        run: echo Hello, world!
+
+      # 2. SSHX execution with strict safe timeout
+      - name: Run a multi-line script
         run: |
           mkdir -p ./my-vps-data
+          echo "💡 TIP: Apni zaroori files hamesha './my-vps-data' folder ke andar hi rkhna!"
           
-          # .bashrc me simple validation code inject karna
-          # Yahan 'MerePass123!' ki jagah aap apna custom password rakh sakte hain
-          echo 'if [ -z "$SECURE_GATE_PASSED" ]; then' >> ~/.bashrc
-          echo '    clear' >> ~/.bashrc
-          echo '    echo "======================================================"' >> ~/.bashrc
-          echo '    echo "🔒 SECURITY ALERT: ENTER MAIN VPS PASSWORD TO ACCESS"' >> ~/.bashrc
-          echo '    echo "======================================================"' >> ~/.bashrc
-          echo '    read -s -p "Password: " input_pass' >> ~/.bashrc
-          echo '    echo ""' >> ~/.bashrc
-          echo '    if [ "$input_pass" = "adminop!" ]; then' >> ~/.bashrc
-          echo '        export SECURE_GATE_PASSED=1' >> ~/.bashrc
-          echo '        clear' >> ~/.bashrc
-          echo '        echo "✅ Access Granted! Welcome back."' >> ~/.bashrc
-          echo '    else' >> ~/.bashrc
-          echo '        echo "❌ Wrong Password! Connection Closing..."' >> ~/.bashrc
-          echo '        sleep 2' >> ~/.bashrc
-          echo '        exit 1' >> ~/.bashrc
-          echo '    fi' >> ~/.bashrc
-          echo 'fi' >> ~/.bashrc
+          # 350 minutes ka loop taaki data safely back up ho sake
+          timeout 350m sh -c 'curl -sSf https://sshx.io/get | sh -s run' || true
+          echo "test, and deploy your project."
 
-      # 3. Main SSHX Terminal with safe exit handler
-      - name: Run SSHX Terminal
-        run: |
-          echo "Starting sshx session..."
-          # timeout khatam hone par ye automatic band ho kar code 0 dega taaki pipeline fail na ho
-          timeout 350m sh -c 'curl -sSf https://sshx.io | sh -s run' || true
-
-      # 4. Data auto save karna clone close hone se pehle (Hamesha chalega)
+      # 3. Data auto save karna clone close hone se pehle
       - name: Save Updated Data Backup
         if: always()
         uses: actions/cache/save@v4
@@ -66,7 +48,7 @@ jobs:
           path: ./my-vps-data
           key: vps-data-backup-${{ github.run_id }}-${{ github.run_attempt }}
 
-      # 5. Perfect automatic loop trigger (Hamesha chalega aur naya flow uthayega)
+      # 4. Perfect automatic loop trigger
       - name: Auto Loop Trigger
         if: always()
         run: |
