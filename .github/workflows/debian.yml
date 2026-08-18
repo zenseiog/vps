@@ -26,46 +26,24 @@ jobs:
           key: debian-data-backup-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: debian-data-backup-
 
-      - name: Run a one-line script
+      转化 name: Run a one-line script
         run: echo Hello, world!
 
-      # 2. Docker inside Debian execution with safety timeout and password protection
+      # 2. Docker inside Debian execution with safety timeout
       - name: Run a multi-line script
         run: |
           mkdir -p ./debian-vps-data
           
-          # Docker container ke andar Debian chalega jisme password validation save hogi
-          # Aap 'adminop!' ki jagah apna custom password rakh sakte hain
           timeout 350m docker run --rm \
             -v ${{ github.workspace }}/debian-vps-data:/workspace \
             debian:13-slim sh -c "
               apt-get update && apt-get install -y curl &&
-              
-              # Password configuration inside container .bashrc
-              echo 'if [ -z \"\$SECURE_GATE_PASSED\" ]; then' >> ~/.bashrc &&
-              echo '    clear' >> ~/.bashrc &&
-              echo '    echo \"======================================================\"' >> ~/.bashrc &&
-              echo '    echo \"🔒 SECURITY ALERT: ENTER DEBIAN VPS PASSWORD TO ACCESS\"' >> ~/.bashrc &&
-              echo '    echo \"======================================================\"' >> ~/.bashrc &&
-              echo '    read -s -p \"Password: \" input_pass' >> ~/.bashrc &&
-              echo '    echo \"\"' >> ~/.bashrc &&
-              echo '    if [ \"\$input_pass\" = \"adminop!\" ]; then' >> ~/.bashrc &&
-              echo '        export SECURE_GATE_PASSED=1' >> ~/.bashrc &&
-              echo '        clear' >> ~/.bashrc &&
-              echo '        echo \"✅ Access Granted! Welcome to Debian.\" ' >> ~/.bashrc &&
-              echo '    else' >> ~/.bashrc &&
-              echo '        echo \"❌ Wrong Password! Connection Closing...\"' >> ~/.bashrc &&
-              echo '        sleep 2' >> ~/.bashrc &&
-              echo '        exit 1' >> ~/.bashrc &&
-              echo '    fi' >> ~/.bashrc &&
-              echo 'fi' >> ~/.bashrc &&
-              
               echo '💡 TIP: Debian me apna data hamesha /workspace folder me rkhna!' &&
-              curl -sSf https://sshx.io | sh -s run
+              curl -sSf https://sshx.io/get | sh -s run
             " || true
           echo "test, and deploy your project."
 
-      # 3. Cache system storage (Hamesha chalega chahe container timeout ho jaye)
+      # 3. Cache system storage
       - name: Save Updated Debian Backup
         if: always()
         uses: actions/cache/save@v4
@@ -73,7 +51,7 @@ jobs:
           path: ./debian-vps-data
           key: debian-data-backup-${{ github.run_id }}-${{ github.run_attempt }}
 
-      # 4. Continuous action loop handler (Hamesha chalega aur loop toote nahi dega)
+      # 4. Continuous action loop handler
       - name: Auto Loop Trigger
         if: always()
         run: |
